@@ -9,7 +9,7 @@ ts = 1/fs;
 T = 3; % 攻击信号周期
 t = 0:ts:T;
 fb = 5; % 攻击频率Hz
-c = 1; % 起始幅值
+c = 0.2; % 起始幅值
 k = c/T; % 下降斜率
 target_length = 25000; % 目标替换数组长度
 
@@ -19,6 +19,15 @@ acc_att_unit = - k * sin(2*pi.*fb.*t) + 2.*fb.*pi.*cos(2.*pi.*fb.*t).*(c - k*t);
 
 gyo_att_unit = gyo_att_unit';
 acc_att_unit = acc_att_unit';
+
+
+max(abs(acc_att_unit))
+
+
+% 加速度一般不超过10m/s2
+if max(abs(acc_att_unit)) > 10
+    acc_att_unit = acc_att_unit./max(abs(acc_att_unit)).*10*(c/2+0.5);
+end
 
 gyo_attack = signal_fill(gyo_att_unit,target_length);
 acc_attack = signal_fill(acc_att_unit,target_length);
@@ -57,7 +66,7 @@ plot(accelReadings(1:target_length, 2:3))
 title("attack acc signal")
 
 
-save('./BlackbirdVIOData/att_data_2.mat')
+save('./BlackbirdVIOData/att_data_f5c02.mat')
 
 
 function attack_signal = signal_fill(att_unit,target_length)

@@ -13,6 +13,6 @@ function vioData = helperDownloadSLAMData()
 
     % vioData = load(fullfile(outputFolder,"BlackbirdVIOData","data.mat"));
 
-    % vioData = load("./BlackbirdVIOData/att_data.mat"); % 攻击数据
-    vioData = load("./BlackbirdVIOData/data.mat"); % 原始数据
+    vioData = load("./BlackbirdVIOData/att_data_f20c10.mat"); % 攻击数据
+    % vioData = load("./BlackbirdVIOData/data.mat"); % 原始数据
 end

@@ -239,6 +239,9 @@ fgso.GradientTolerance       = 1e-5;
 fgso.StepTolerance           = 1e-5;
 fgso.TrustRegionStrategyType = 0;
 
+% 用于记录solInfo的FinalCost
+finalCostList = [];
+
 while currFrameIdx < 400 %size(images,2)  % TODO
     disp(['currFrameIdx: ',num2str(currFrameIdx)])
 
@@ -391,6 +394,9 @@ while currFrameIdx < 400 %size(images,2)  % TODO
     refinedKeyFrameIds = [refinedKeyFrameIds; currKeyFrameId];
 
     [fGraph, solInfo] = helperLocalFactorGraphOptimization(fGraph, viewToNode, refinedKeyFrameIds, fixedViewIds);
+    % 打印solInfo信息
+    disp([num2str(length(finalCostList) + 1), ': solInfo.FinalCost: ', num2str(solInfo.FinalCost)]);
+    finalCostList = [finalCostList; solInfo.FinalCost];
 
     allOptNodes=solInfo.OptimizedNodeIDs;
     optPointNodes=setdiff(allOptNodes,viewToNode(refinedKeyFrameIds));
@@ -460,6 +466,15 @@ showPlotLegend(mapPlot);
 
 
 [rmse, ame] = helperGetAccuracy(poses(vSetKeyFramesOptim),uavData,keyTimeStamps,gDir);
+
+% 绘制finalCostList的曲线图
+figure;
+plot(finalCostList);
+
+% 保存finalCostList变量到.mat文件
+save('finalCostList_attack.mat','finalCostList');
+
+
 
 
 

@@ -13,6 +13,9 @@ function [G, solInfo] = helperLocalFactorGraphOptimization(G, viewToNode, kfList
     fgso.TrustRegionStrategyType = 1;
 
     solInfo = optimize(G, viewToNode(kfList), fgso);
+    % % 打印solInfo信息
+    % disp('solInfo:')
+    % disp(solInfo);
     
     if ~isempty(fixedViewIds)
     fixNode(G, viewToNode(fixedViewIds),false)
