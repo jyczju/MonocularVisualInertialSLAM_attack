@@ -7,8 +7,13 @@ clc
 % TODO:调整攻击参数，观察攻击效果
 % TODO:（实时）绘制ground truth的坐标位置、运动速度和姿态曲线以及估计出来的坐标位置、运动速度和姿态曲线，比较攻击前后的差异
 % TODO:打印/绘图算法的中间过程。到底是哪一步开始出现了错误？给出一个insight
-
-
+DEFENSE = false; % 是否开启防御
+if DEFENSE
+    disp('开启防御');
+else
+    disp('未开启防御');
+end
+myCurrTimeStamp = 0;
 
 uavData = helperDownloadSLAMData(); % 这行代码load了仿真数据，请在这个函数中修改
 
@@ -242,8 +247,11 @@ fgso.TrustRegionStrategyType = 0;
 % 用于记录solInfo的FinalCost
 finalCostList = [];
 
-while currFrameIdx < 400 %size(images,2)  % TODO
+while currFrameIdx < size(images,2) %size(images,2) 该参数下 正常数据会报错 % 400  % TODO
     disp(['currFrameIdx: ',num2str(currFrameIdx)])
+    % 添加这一行来打印当前帧的时间
+    disp(['Current time: ', num2str((keyTimeStamps(end) - keyTimeStamps(1))/1e9),'seconds']);
+    myCurrTimeStamp = (keyTimeStamps(end) - keyTimeStamps(1))/1e9;
 
     if ~isIMUInitialized && currKeyFrameId>50
         camPoses = poses(vSetKeyFrames);
@@ -253,7 +261,7 @@ while currFrameIdx < 400 %size(images,2)  % TODO
         [gDir,scale] = helperAlignIMUCamera(camPoses,uavData,imuParams,...
             keyFrameToFrame,currKeyFrameId);
 
-        if scale>0.3
+        if scale>0.3 % 大约在16.3s触发
 
             % Compare the scaled poses to the ground truth
             alignementPlot = helperDrawScaledandRotatedTraj(uavData,camPoses,scale,startFrameIdx,keyFrameToFrame);
@@ -296,10 +304,22 @@ while currFrameIdx < 400 %size(images,2)  % TODO
     
             for i=2:length(viewToNode)
                 imuMeasurements = helperExtractIMUMeasurements(uavData, keyFrameToFrame(i-1), keyFrameToFrame(i));
+                % disp('imuMeasurements_1.accel:');
+                % disp(imuMeasurements.accel);
+                % disp('imuMeasurements_1.gyro:');
+                % disp(imuMeasurements.gyro);
                 imuId = [viewToNode(i-1),velToNode(i-1),biasToNode(i-1), ...
                         viewToNode(i)  ,velToNode(i)  ,biasToNode(i)];
                 fIMU = factorIMU(imuId,imuMeasurements.gyro,imuMeasurements.accel,imuParams,SensorTransform=uavData.camToIMUTransform); % 提取IMU因子
-                addFactor(fGraph,fIMU);
+                if ~DEFENSE
+                   addFactor(fGraph,fIMU);
+                else
+                   if myCurrTimeStamp >= 20 && myCurrTimeStamp <= 25 % TODO：这里的判断改为一个机器学习模型来判断（输入是imuMeasurements.gyro和imuMeasurements.accel，size均为变长的N*3）
+                       % 受攻击
+                   else
+                       addFactor(fGraph,fIMU);
+                   end
+                end
             end
     
             optimize(fGraph,fgso);
@@ -317,6 +337,12 @@ while currFrameIdx < 400 %size(images,2)  % TODO
         vSetKeyFrames.Views, currFeatures, currPoints, lastKeyFrameId, intrinsics, scaleFactor);
 
     % Track the local map and check if the current frame is a key frame.
+    if isempty(mapPointsIdx)
+        disp('mapPointsIdx为空，跳过');
+        isLastFrameKeyFrame = false;
+        currFrameIdx        = currFrameIdx + 1;
+        continue;
+    end
     [localKeyFrameIds, currPose, mapPointsIdx, featureIdx, isKeyFrame] = ...
         helperTrackLocalMapVI(mapPointSet, vSetKeyFrames, mapPointsIdx, ...
         featureIdx, currPose, currFeatures, currPoints, intrinsics, scaleFactor, numLevels, ...
@@ -343,12 +369,18 @@ while currFrameIdx < 400 %size(images,2)  % TODO
 
     % Extract IMU measurements between two KFs
     imuMeasurements = helperExtractIMUMeasurements(uavData, keyFrameToFrame(end-1), keyFrameToFrame(end));
+    % disp('imuMeasurements_2.accel:');
+    % disp(imuMeasurements.accel);
+    % disp('imuMeasurements_2.gyro:');
+    % disp(imuMeasurements.gyro);
+
+
     
     % Add the new key frame and IMU data
     [fGraph, viewToNode, velToNode, biasToNode, mapPointSet, vSetKeyFrames] = helperAddNewKeyFrame(...
         fGraph, viewToNode, pointToNode, velToNode, biasToNode, mapPointSet, vSetKeyFrames, imuMeasurements, ...
         currPose, currFeatures, currPoints, mapPointsIdx, featureIdx, localKeyFrameIds, intrinsics, ...
-        uavData.camToIMUTransform, imuParams, isIMUInitialized);
+        uavData.camToIMUTransform, imuParams, isIMUInitialized, myCurrTimeStamp, DEFENSE);
     
     % Remove outlier map points that are observed in fewer than 3 key frames
     [mapPointSet,pointToNode] = helperCullRecentMapPoints(mapPointSet, pointToNode, mapPointsIdx, newPointIdx);
@@ -472,7 +504,7 @@ figure;
 plot(finalCostList);
 
 % 保存finalCostList变量到.mat文件
-save('finalCostList_attack.mat','finalCostList');
+save('finalCostList.mat','finalCostList');
 
 
 
@@ -564,7 +596,7 @@ end
 function [fGraph, viewToNode, velToNode, biasToNode, mapPoints, vSetKeyFrames] = helperAddNewKeyFrame(...
     fGraph, viewToNode, pointToNode, velToNode, biasToNode, mapPoints, vSetKeyFrames, imuMeasurements, ...
     cameraPose, currFeatures, currPoints, mapPointsIndices, featureIndices, keyFramesIndices, ...
-    intrinsics, camToIMUTransform, imuParams, initIMU)
+    intrinsics, camToIMUTransform, imuParams, initIMU, myCurrTimeStamp, DEFENSE)
 
     N = length(mapPointsIndices);
     K = intrinsics.K;
@@ -632,7 +664,21 @@ function [fGraph, viewToNode, velToNode, biasToNode, mapPoints, vSetKeyFrames] =
     
         imuId = [viewToNode(end-1),velToNode(end-1),biasToNode(end-1), ...
                  viewToNode(end)  ,velToNode(end)  ,biasToNode(end)];
+
+        
         fIMU = factorIMU(imuId,imuMeasurements.gyro,imuMeasurements.accel,imuParams,SensorTransform=camToIMUTransform);
-        addFactor(fGraph,fIMU);
+        % 防御 不加入因子图
+        
+        if ~DEFENSE
+           addFactor(fGraph,fIMU);
+        else
+           if myCurrTimeStamp >= 20 && myCurrTimeStamp <= 25 % TODO：这里的判断改为一个机器学习模型来判断（输入是imuMeasurements.gyro和imuMeasurements.accel，size均为变长的N*3）
+               % 受攻击
+               disp(['在第',num2str(myCurrTimeStamp),'秒受到攻击，不加入因子图'])
+           else
+               disp(['在第',num2str(myCurrTimeStamp),'秒未受到攻击，加入因子图'])
+               addFactor(fGraph,fIMU);
+           end
+        end
     end
 end
