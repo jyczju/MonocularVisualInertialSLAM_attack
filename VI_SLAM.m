@@ -7,6 +7,10 @@ clc
 % TODO:调整攻击参数，观察攻击效果
 % TODO:（实时）绘制ground truth的坐标位置、运动速度和姿态曲线以及估计出来的坐标位置、运动速度和姿态曲线，比较攻击前后的差异
 % TODO:打印/绘图算法的中间过程。到底是哪一步开始出现了错误？给出一个insight
+
+
+% gTruth: [x,y,z坐标，后面四列是四元数]
+
 DEFENSE = false; % 是否开启防御
 if DEFENSE
     disp('开启防御');
@@ -247,11 +251,13 @@ fgso.TrustRegionStrategyType = 0;
 % 用于记录solInfo的FinalCost
 finalCostList = [];
 
-while currFrameIdx < size(images,2) %size(images,2) 该参数下 正常数据会报错 % 400  % TODO
+while currFrameIdx < 890 %size(images,2) 该参数下 正常数据会报错 %400 TODO
+    % 打印当前时间
+    fprintf('[%s]\n', char(datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss.SSSS')));
     disp(['currFrameIdx: ',num2str(currFrameIdx)])
     % 添加这一行来打印当前帧的时间
-    disp(['Current time: ', num2str((keyTimeStamps(end) - keyTimeStamps(1))/1e9),'seconds']);
-    myCurrTimeStamp = (keyTimeStamps(end) - keyTimeStamps(1))/1e9;
+    myCurrTimeStamp = (keyTimeStamps(end) - keyTimeStamps(1))*6.67/1e9;
+    disp(['Current time: ', num2str(myCurrTimeStamp),'seconds']);
 
     if ~isIMUInitialized && currKeyFrameId>50
         camPoses = poses(vSetKeyFrames);
@@ -314,9 +320,11 @@ while currFrameIdx < size(images,2) %size(images,2) 该参数下 正常数据会
                 if ~DEFENSE
                    addFactor(fGraph,fIMU);
                 else
-                   if myCurrTimeStamp >= 20 && myCurrTimeStamp <= 25 % TODO：这里的判断改为一个机器学习模型来判断（输入是imuMeasurements.gyro和imuMeasurements.accel，size均为变长的N*3）
+                   if myCurrTimeStamp >= 90 && myCurrTimeStamp <= 120 % TODO：这里的判断改为一个机器学习模型来判断（输入是imuMeasurements.gyro和imuMeasurements.accel，size均为变长的N*3）
                        % 受攻击
+                       disp(['在第',num2str(myCurrTimeStamp),'秒受到攻击，不加入因子图'])
                    else
+                       disp(['在第',num2str(myCurrTimeStamp),'秒未受到攻击，加入因子图'])
                        addFactor(fGraph,fIMU);
                    end
                 end
@@ -333,13 +341,18 @@ while currFrameIdx < size(images,2) %size(images,2) 该参数下 正常数据会
         numPoints, intrinsics);
 
     % Track the last key frame
-    [currPose, mapPointsIdx, featureIdx] = helperTrackLastKeyFrameVI(mapPointSet, ...
-        vSetKeyFrames.Views, currFeatures, currPoints, lastKeyFrameId, intrinsics, scaleFactor);
+    try
+        [currPose, mapPointsIdx, featureIdx] = helperTrackLastKeyFrameVI(mapPointSet, ...
+            vSetKeyFrames.Views, currFeatures, currPoints, lastKeyFrameId, intrinsics, scaleFactor);
+    catch ME
+        disp('发生错误：');
+        disp(ME.message);  % 显示错误信息
+    end
 
     % Track the local map and check if the current frame is a key frame.
     if isempty(mapPointsIdx)
         disp('mapPointsIdx为空，跳过');
-        isLastFrameKeyFrame = false;
+        % isLastFrameKeyFrame = false;
         currFrameIdx        = currFrameIdx + 1;
         continue;
     end
@@ -347,6 +360,7 @@ while currFrameIdx < size(images,2) %size(images,2) 该参数下 正常数据会
         helperTrackLocalMapVI(mapPointSet, vSetKeyFrames, mapPointsIdx, ...
         featureIdx, currPose, currFeatures, currPoints, intrinsics, scaleFactor, numLevels, ...
         isLastFrameKeyFrame, lastKeyFrameIdx, currFrameIdx, numSkipFrames, numPointsKeyFrame);
+
 
     % Visualize matched features
     updatePlot(featurePlot, currI, currPoints(featureIdx));
@@ -419,7 +433,13 @@ while currFrameIdx < size(images,2) %size(images,2) 该参数下 正常数据会
 
     % Local bundle adjustment
     [refinedViews, dist] = connectedViews(vSetKeyFrames, currKeyFrameId, MaxDistance=2);
-    refinedKeyFrameIds = refinedViews.ViewId;
+    try
+        refinedKeyFrameIds = refinedViews.ViewId;
+    catch ME
+        disp('发生错误：');
+        disp(ME.message);  % 显示错误信息
+    end
+
     fixedViewIds = refinedKeyFrameIds(dist==2);
     fixedViewIds = fixedViewIds(1:min(10, numel(fixedViewIds)));
 
@@ -503,8 +523,8 @@ showPlotLegend(mapPlot);
 figure;
 plot(finalCostList);
 
-% 保存finalCostList变量到.mat文件
-save('finalCostList.mat','finalCostList');
+% % 保存finalCostList变量到.mat文件
+% save('finalCostList_attack_defense.mat','finalCostList');
 
 
 
@@ -672,7 +692,7 @@ function [fGraph, viewToNode, velToNode, biasToNode, mapPoints, vSetKeyFrames] =
         if ~DEFENSE
            addFactor(fGraph,fIMU);
         else
-           if myCurrTimeStamp >= 20 && myCurrTimeStamp <= 25 % TODO：这里的判断改为一个机器学习模型来判断（输入是imuMeasurements.gyro和imuMeasurements.accel，size均为变长的N*3）
+           if myCurrTimeStamp >= 90 && myCurrTimeStamp <= 120 % TODO：这里的判断改为一个机器学习模型/指标+阈值来判断（输入是imuMeasurements.gyro和imuMeasurements.accel，size均为变长的N*3）
                % 受攻击
                disp(['在第',num2str(myCurrTimeStamp),'秒受到攻击，不加入因子图'])
            else

@@ -6,14 +6,14 @@ clc
 
 fs = 100;
 ts = 1/fs;
-T = 3; % 攻击信号周期
+T = 1.5; % 攻击信号周期
 t = 0:ts:T;
 fb = 5; % 攻击频率Hz
 c = 0.2; % 起始幅值
 k = c/T; % 下降斜率
 target_length = 27003; % 目标替换数组长度 % 25000
-T_delay = 20; % 延迟几秒后开始攻击
-T_continue = 5; % 攻击持续长度
+T_delay = 108; % 延迟几秒后开始攻击
+T_continue = 1000000; % 攻击持续长度
 phi = 0 /180* pi;
 
 A = c - k * t;
@@ -61,7 +61,8 @@ title("acc attack signal")
 
 
 
-load('./BlackbirdVIOData/orig_data.mat')
+% load('./BlackbirdVIOData/orig_data.mat')
+load('./BlackbirdVIOData/data_stable.mat')
 figure(2)
 subplot(2,1,1)
 plot(plot_t,gyroReadings(1:target_length, 2:3))
@@ -90,7 +91,7 @@ xlabel('time(s)')
 title("attack acc signal")
 
 
-save('./BlackbirdVIOData/att_data_f5c02_delay20_continue5.mat')
+save('./BlackbirdVIOData/att_data_stable_f5c02_delay108.mat')
 
 
 function attack_signal = signal_fill(att_unit,target_length)
