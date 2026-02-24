@@ -11,7 +11,7 @@ clc
 
 % gTruth: [x,y,z坐标，后面四列是四元数]
 
-DEFENSE = false; % 是否开启防御
+DEFENSE = true; % 是否开启防御
 if DEFENSE
     disp('开启防御');
 else
@@ -320,11 +320,14 @@ while currFrameIdx < 890 %size(images,2) 该参数下 正常数据会报错 %400
                 if ~DEFENSE
                    addFactor(fGraph,fIMU);
                 else
-                   if myCurrTimeStamp >= 90 && myCurrTimeStamp <= 120 % TODO：这里的判断改为一个机器学习模型来判断（输入是imuMeasurements.gyro和imuMeasurements.accel，size均为变长的N*3）
+                   % 使用统计指标判断是否受到攻击
+                   [isAnomalous, combined_metric] = helperDetectAnomalousIMU(imuMeasurements, 'Threshold', 19);
+                   
+                   if isAnomalous
                        % 受攻击
-                       disp(['在第',num2str(myCurrTimeStamp),'秒受到攻击，不加入因子图'])
+                       disp(['在第',num2str(myCurrTimeStamp),'秒检测到异常IMU数据(指标值：',num2str(combined_metric),')，不加入因子图'])
                    else
-                       disp(['在第',num2str(myCurrTimeStamp),'秒未受到攻击，加入因子图'])
+                       disp(['在第',num2str(myCurrTimeStamp),'秒未检测到攻击(指标值：',num2str(combined_metric),')，加入因子图'])
                        addFactor(fGraph,fIMU);
                    end
                 end
@@ -646,7 +649,7 @@ function [fGraph, viewToNode, velToNode, biasToNode, mapPoints, vSetKeyFrames] =
         if numel(index1) > 5
             vSetKeyFrames = addConnection(vSetKeyFrames, localKeyFrameId, viewId, relPose, ...
                 Matches=[index2d(index1),featureIndices(index2)]);
-    
+
             % Add a 3d pose factor to link both frames in the local map
             fgRelPose=double([relPose.Translation rotm2quat(relPose.R)]);
             fPose=factorTwoPoseSE3([viewToNode(localKeyFrameId) viewToNode(viewId)],Measurement=fgRelPose);
@@ -684,21 +687,24 @@ function [fGraph, viewToNode, velToNode, biasToNode, mapPoints, vSetKeyFrames] =
     
         imuId = [viewToNode(end-1),velToNode(end-1),biasToNode(end-1), ...
                  viewToNode(end)  ,velToNode(end)  ,biasToNode(end)];
-
         
+        % 提取IMU因子
         fIMU = factorIMU(imuId,imuMeasurements.gyro,imuMeasurements.accel,imuParams,SensorTransform=camToIMUTransform);
-        % 防御 不加入因子图
-        
+
         if ~DEFENSE
-           addFactor(fGraph,fIMU);
+            addFactor(fGraph,fIMU);
         else
-           if myCurrTimeStamp >= 90 && myCurrTimeStamp <= 120 % TODO：这里的判断改为一个机器学习模型/指标+阈值来判断（输入是imuMeasurements.gyro和imuMeasurements.accel，size均为变长的N*3）
-               % 受攻击
-               disp(['在第',num2str(myCurrTimeStamp),'秒受到攻击，不加入因子图'])
-           else
-               disp(['在第',num2str(myCurrTimeStamp),'秒未受到攻击，加入因子图'])
-               addFactor(fGraph,fIMU);
-           end
+            % 使用统计方法进行攻击检测
+            [isAnomalous, combined_metric] = helperDetectAnomalousIMU(imuMeasurements, 'Threshold', 19);
+                    
+            if isAnomalous
+                % 检测到异常，不加入因子图
+                disp(['在第',num2str(myCurrTimeStamp),'秒检测到异常IMU数据(指标值：',num2str(combined_metric),')，不加入因子图']);
+            else
+                % 未检测到异常，加入因子图
+                disp(['在第',num2str(myCurrTimeStamp),'秒未检测到攻击(指标值：',num2str(combined_metric),')，加入因子图']);
+                addFactor(fGraph,fIMU);
+            end
         end
     end
 end
